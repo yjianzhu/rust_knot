@@ -96,6 +96,7 @@ fn get_knottype_ring(
 /// and look up the knot type in the table.
 ///
 /// Ports: knottype.cpp get_knottype_by_matrix_open_internal (lines 136-285)
+#[allow(clippy::needless_range_loop)]
 fn compute_knottype_from_chain(
     points: &[Point3],
     table: &AlexanderTable,
@@ -136,13 +137,13 @@ fn compute_knottype_from_chain(
         for &(j, _) in &one_line {
             let key = if i < j { (i, j) } else { (j, i) };
 
-            if !crossing.contains_key(&key) {
+            if let std::collections::btree_map::Entry::Vacant(e) = crossing.entry(key) {
                 let is_over = if intersections[i][j].param > 0.0 {
                     1
                 } else {
                     -1
                 };
-                crossing.insert(key, (count_crossing, is_over));
+                e.insert((count_crossing, is_over));
                 count_crossing += 1;
             }
 

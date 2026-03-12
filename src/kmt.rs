@@ -149,8 +149,8 @@ mod tests {
     #[test]
     fn test_kmt_open_preserves_endpoints() {
         let mut points = vec![[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [2.0, 0.0, 0.0]];
-        let first = points.first().unwrap().clone();
-        let last = points.last().unwrap().clone();
+        let first = *points.first().unwrap();
+        let last = *points.last().unwrap();
         kmt_open_chain(&mut points);
         assert_eq!(*points.first().unwrap(), first);
         assert_eq!(*points.last().unwrap(), last);

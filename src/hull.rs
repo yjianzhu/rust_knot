@@ -37,8 +37,8 @@ pub fn hull_ends(
             center[d] += p[d];
         }
     }
-    for d in 0..3 {
-        center[d] /= n;
+    for c in &mut center {
+        *c /= n;
     }
 
     // Compute max radius from center

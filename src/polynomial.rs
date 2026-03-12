@@ -76,7 +76,7 @@ impl Polynomial {
         let shifted: Vec<i64> = self.coeffs[ld..].to_vec();
         let mut p = Polynomial { coeffs: shifted };
         p.trim();
-        if p.coeffs.last().map_or(false, |&c| c < 0) {
+        if p.coeffs.last().is_some_and(|&c| c < 0) {
             p = -p;
         }
         p
@@ -153,8 +153,8 @@ impl Polynomial {
         for k in 0..n {
             // Find a nonzero pivot in column k, rows k..n
             let mut pivot_row = None;
-            for i in k..n {
-                if !m[i][k].is_zero() {
+            for (i, row) in m.iter().enumerate().take(n).skip(k) {
+                if !row[k].is_zero() {
                     pivot_row = Some(i);
                     break;
                 }
@@ -371,11 +371,9 @@ pub fn parse_polynomial(s: &str) -> Result<Polynomial> {
     let mut current = String::new();
 
     for (i, ch) in s.chars().enumerate() {
-        if (ch == '+' || ch == '-') && i > 0 {
-            if !current.is_empty() {
-                terms.push(current.clone());
-                current.clear();
-            }
+        if (ch == '+' || ch == '-') && i > 0 && !current.is_empty() {
+            terms.push(current.clone());
+            current.clear();
         }
         current.push(ch);
     }
@@ -424,8 +422,8 @@ fn parse_term(term: &str) -> Result<(i64, usize)> {
         let degree_part = &term[t_pos + 1..];
         let degree = if degree_part.is_empty() {
             1
-        } else if degree_part.starts_with('^') {
-            degree_part[1..]
+        } else if let Some(exp_str) = degree_part.strip_prefix('^') {
+            exp_str
                 .parse::<usize>()
                 .map_err(|e| KnotError::PolynomialParse(format!("bad exponent: {e}")))?
         } else {

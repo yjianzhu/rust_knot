@@ -54,7 +54,7 @@ impl AlexanderTable {
                 continue;
             }
 
-            let parts: Vec<&str> = line.splitn(2, |c: char| c == '\t' || c == ' ').collect();
+            let parts: Vec<&str> = line.splitn(2, ['\t', ' ']).collect();
             if parts.len() < 2 {
                 if strict {
                     return Err(KnotError::DataParse(format!(

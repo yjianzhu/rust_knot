@@ -449,9 +449,9 @@ fn find_knot_core_ring(
         knot_right = right + 1;
 
         // Map back to original indices
-        let offset = (rot * shift_size) as i32;
-        let orig_left = ((knot_left - 1 + offset) % n) as i32;
-        let orig_right = ((knot_right - 1 + offset) % n) as i32;
+        let offset = rot * shift_size;
+        let orig_left = (knot_left - 1 + offset) % n;
+        let orig_right = (knot_right - 1 + offset) % n;
         candidates.push(Candidate {
             left: orig_left,
             right: orig_right,
