@@ -3,6 +3,10 @@ test_manual/
 target
 REVIEW*.md
 CHANGELOG.md
-review.md
+review*.md
 TODO.md
 RELEASE_WORKFLOW.md
+pyknotid
+database.md
+
+tools/

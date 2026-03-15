@@ -224,7 +224,7 @@ fn compute_knottype_from_chain(
             if debug {
                 eprintln!("knot type not found, with polynomial as: {normalized}");
             }
-            Err(KnotError::NotFound)
+            Err(KnotError::NotFound(normalized.to_string()))
         }
     }
 }

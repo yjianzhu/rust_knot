@@ -1,6 +1,7 @@
 use std::io::BufReader;
 
 use rust_knot::alexander_table::AlexanderTable;
+use rust_knot::batch::process_frame;
 use rust_knot::config::KnotConfig;
 use rust_knot::io::read_data_xyz;
 use rust_knot::knotsize::find_knot_core;
@@ -124,4 +125,40 @@ fn test_ambiguous_lookup_returns_simplest() {
     let all = table.lookup_all(&poly);
     assert!(all.len() >= 2, "expected at least 2 candidates");
     assert_eq!(all[0], "8_3");
+}
+
+#[test]
+fn test_notfound_uses_polynomial_as_knot_type() {
+    let table_data = "0_1\t1\n";
+    let table = AlexanderTable::from_reader(std::io::Cursor::new(table_data)).unwrap();
+    let points = load_xyz("L300_knot3_1_ring.xyz");
+
+    let config = KnotConfig {
+        is_ring: true,
+        faster: true,
+        ..KnotConfig::default()
+    };
+
+    let result = process_frame(0, &points, &table, &config, None);
+    assert!(
+        result.error.is_none(),
+        "notfound should not be treated as fatal error"
+    );
+    assert_ne!(result.knot_type, "1");
+    assert!(
+        result.knot_type.contains('t'),
+        "expected polynomial string in knot_type, got '{}'",
+        result.knot_type
+    );
+    assert_eq!(result.knot_start, -1);
+    assert_eq!(result.knot_end, -1);
+    assert_eq!(result.knot_size, 0);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("polynomial not found in table")),
+        "expected warning about missing polynomial, got {:?}",
+        result.warnings
+    );
 }

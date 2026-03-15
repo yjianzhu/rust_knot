@@ -4,6 +4,7 @@ use rayon::prelude::*;
 
 use crate::alexander_table::AlexanderTable;
 use crate::config::KnotConfig;
+use crate::error::KnotError;
 use crate::io::XyzFrameIter;
 use crate::knotsize::find_knot_core;
 use crate::knottype::get_knottype;
@@ -33,8 +34,13 @@ pub fn process_frame(
     config: &KnotConfig,
     target_type: Option<&str>,
 ) -> FrameResult {
-    let knot_type = match get_knottype(points, table, config) {
-        Ok(t) => t,
+    let mut warnings = Vec::new();
+    let (knot_type, unknown_poly) = match get_knottype(points, table, config) {
+        Ok(t) => (t, false),
+        Err(KnotError::NotFound(poly)) => {
+            warnings.push(format!("knot polynomial not found in table: {poly}"));
+            (poly, true)
+        }
         Err(e) => {
             return FrameResult {
                 frame,
@@ -48,12 +54,15 @@ pub fn process_frame(
         }
     };
 
-    let mut warnings = Vec::new();
-
-    let (start, end, size) = if knot_type == "1" {
-        (-1, -1, 0)
+    let search_target = if knot_type == "1" {
+        None
+    } else if unknown_poly {
+        target_type
     } else {
-        let search = target_type.unwrap_or(&knot_type);
+        Some(target_type.unwrap_or(&knot_type))
+    };
+
+    let (start, end, size) = if let Some(search) = search_target {
         match find_knot_core(points, search, table, config) {
             Ok(core) if core.matched => (core.left, core.right, core.size),
             Ok(_) => {
@@ -65,6 +74,8 @@ pub fn process_frame(
                 (-1, -1, 0)
             }
         }
+    } else {
+        (-1, -1, 0)
     };
 
     FrameResult {

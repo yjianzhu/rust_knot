@@ -14,8 +14,8 @@ pub enum KnotError {
     #[error("convex hull computation failed")]
     HullFailed,
 
-    #[error("knot type not found for computed polynomial")]
-    NotFound,
+    #[error("knot type not found for computed polynomial: {0}")]
+    NotFound(String),
 
     #[error("empty chain provided")]
     EmptyChain,

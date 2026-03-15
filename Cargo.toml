@@ -1,6 +1,6 @@
 [package]
 name = "rust_knot"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2021"
 description = "Knot identification and size calculation via Alexander polynomials"
 
@@ -11,7 +11,3 @@ rayon = "1.10"
 
 [dev-dependencies]
 approx = "0.5"
-
-[[example]]
-name = "identify_knot"
-path = "examples/identify_knot.rs"
