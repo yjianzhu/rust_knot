@@ -44,6 +44,7 @@ rust_knot/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs               # crate 入口，re-export 公开 API
+│   ├── main.rs              # CLI 入口（直接参数模式）
 │   ├── config.rs             # KnotConfig — 统一配置结构体
 │   ├── batch.rs              # 批处理: process_frame / process_frames_parallel / process_frames_streaming
 │   ├── point.rs              # Point3 = [f64; 3], EPSILON = 1e-7
@@ -56,13 +57,12 @@ rust_knot/
 │   ├── knottype.rs           # 纽结类型识别核心: 交叉点 → Alexander 矩阵 → 多项式 → 查表
 │   ├── knotsize.rs           # 二分搜索纽结核心定位
 │   └── io.rs                 # XYZ / LAMMPS 格式读写 + XyzFrameIter 惰性帧迭代器
-├── examples/
-│   └── identify_knot.rs      # CLI 工具: 多帧批处理 + knot_index.txt 输出
 ├── tests/
 │   └── integration.rs        # 6 个端到端集成测试
 └── .github/
     └── workflows/
-        └── release.yml       # GitHub Actions: 三平台自动构建发布
+        ├── ci.yml            # GitHub Actions: push/PR 代码检查
+        └── release.yml       # GitHub Actions: tag 触发三平台发布
 ```
 
 ## 依赖
@@ -105,7 +105,7 @@ cargo build --release
 cargo test
 
 # 编译 CLI 工具
-cargo build --release --example identify_knot
+cargo build --release
 ```
 
 ## 使用
@@ -114,19 +114,21 @@ cargo build --release --example identify_knot
 
 ```bash
 # 最简用法: 内嵌表 (≤9 crossings)，无需外部文件
-./identify_knot input.xyz
+cargo run -- input.xyz
+# 或 release 二进制
+./target/release/rust_knot input.xyz
 
 # 环链模式
-./identify_knot input.xyz --ring
+./target/release/rust_knot input.xyz --ring
 
 # 追加外部表 (>9 crossings)
-./identify_knot input.xyz --table extended_table.txt
+./target/release/rust_knot input.xyz --table extended_table.txt
 
 # 多帧文件 + 指定批大小 + 自定义输出路径
-./identify_knot trajectory.xyz --ring --batch 128 --output result.txt
+./target/release/rust_knot trajectory.xyz --ring --batch 128 --threads 8 --output result.txt
 
 # 全部参数
-./identify_knot <xyz_file> [target_type] [--table <path>] [--ring] [--fast] [--debug] [--output <path>] [--batch <size>]
+./target/release/rust_knot <xyz_file> [target_type] [--table <path>] [--ring] [--fast] [--debug] [--output <path>] [--batch <size>] [--threads <n>]
 ```
 
 输出文件 `knot_index.txt`:

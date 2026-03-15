@@ -4,14 +4,16 @@ use std::io::{BufReader, BufWriter, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+use rayon::ThreadPoolBuilder;
 use rust_knot::alexander_table::AlexanderTable;
 use rust_knot::batch::process_frames_streaming;
 use rust_knot::config::KnotConfig;
 
 fn print_usage(prog: &str) {
     eprintln!(
-        "Usage: {prog} <xyz_file> [--table <path>] [target_type] [--ring] [--fast] [--debug] [--output <path>] [--batch <size>]"
+        "Usage: {prog} <xyz_file> [--table <path>] [target_type] [--ring] [--fast] [--debug] [--output <path>] [--batch <size>] [--threads <n>]"
     );
+    eprintln!();
     eprintln!("  xyz_file:        path to XYZ coordinate file (single or multi-frame)");
     eprintln!("  --table <path>:  Alexander polynomial table (default: built-in ≤9 crossings)");
     eprintln!("  target_type:     (optional) knot type to search for core, e.g. '3_1'");
@@ -20,6 +22,7 @@ fn print_usage(prog: &str) {
     eprintln!("  --debug:         enable debug output");
     eprintln!("  --output <path>: write knot_index log (default: knot_index.txt)");
     eprintln!("  --batch <size>:  frames per batch (default: 64)");
+    eprintln!("  --threads <n>:   rayon worker thread count (default: auto)");
     eprintln!("  -h, --help:      show this message");
 }
 
@@ -31,16 +34,14 @@ fn require_arg(args: &[String], i: usize, flag: &str) -> String {
     args[i].clone()
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 || args.iter().any(|a| a == "-h" || a == "--help") {
-        print_usage(&args[0]);
-        std::process::exit(if args.len() < 2 { 1 } else { 0 });
+fn run_cli(args: &[String], prog: &str) {
+    if args.is_empty() || args.iter().any(|a| a == "-h" || a == "--help") {
+        print_usage(prog);
+        std::process::exit(if args.is_empty() { 1 } else { 0 });
     }
 
-    let xyz_path = &args[1];
+    let xyz_path = &args[0];
 
-    // Parse flags
     let mut config = KnotConfig {
         faster: true,
         ..KnotConfig::default()
@@ -48,8 +49,9 @@ fn main() {
     let mut target_type: Option<String> = None;
     let mut output_path = String::from("knot_index.txt");
     let mut batch_size: Option<usize> = None;
+    let mut num_threads: Option<usize> = None;
     let mut table_path: Option<String> = None;
-    let mut i = 2;
+    let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--ring" => config.is_ring = true,
@@ -57,17 +59,25 @@ fn main() {
             "--debug" => config.debug = true,
             "--table" => {
                 i += 1;
-                table_path = Some(require_arg(&args, i, "--table"));
+                table_path = Some(require_arg(args, i, "--table"));
             }
             "--output" => {
                 i += 1;
-                output_path = require_arg(&args, i, "--output");
+                output_path = require_arg(args, i, "--output");
             }
             "--batch" => {
                 i += 1;
-                let val = require_arg(&args, i, "--batch");
+                let val = require_arg(args, i, "--batch");
                 batch_size = Some(val.parse().unwrap_or_else(|_| {
                     eprintln!("error: --batch value '{val}' is not a valid integer");
+                    std::process::exit(1);
+                }));
+            }
+            "--threads" => {
+                i += 1;
+                let val = require_arg(args, i, "--threads");
+                num_threads = Some(val.parse().unwrap_or_else(|_| {
+                    eprintln!("error: --threads value '{val}' is not a valid integer");
                     std::process::exit(1);
                 }));
             }
@@ -77,7 +87,20 @@ fn main() {
         i += 1;
     }
 
-    // Load Alexander polynomial table
+    if let Some(n) = num_threads {
+        if n == 0 {
+            eprintln!("error: --threads must be at least 1");
+            std::process::exit(1);
+        }
+        ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .unwrap_or_else(|e| {
+                eprintln!("error: failed to configure rayon thread pool: {e}");
+                std::process::exit(1);
+            });
+    }
+
     let t0 = Instant::now();
     let table = match table_path {
         Some(ref path) => {
@@ -95,26 +118,26 @@ fn main() {
         t0.elapsed()
     );
 
-    // Open XYZ file
     let file = File::open(xyz_path).expect("failed to open XYZ file");
     let reader = BufReader::new(file);
 
     eprintln!(
-        "Config: is_ring={}, faster={}, extend_factor={}, num_rotations={}, batch_size={}",
+        "Config: is_ring={}, faster={}, extend_factor={}, num_rotations={}, batch_size={}, threads={}",
         config.is_ring,
         config.faster,
         config.extend_factor,
         config.num_rotations,
-        batch_size.unwrap_or(64)
+        batch_size.unwrap_or(64),
+        num_threads
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "auto".to_string())
     );
 
-    // Open output file
     let out_file = File::create(&output_path).expect("failed to create output file");
     let mut writer = BufWriter::new(out_file);
     writeln!(writer, "# frame\tknottype\tknot_start\tknot_end\tknot_size")
         .expect("write header failed");
 
-    // Streaming batch processing
     let t0 = Instant::now();
     let n_knotted = AtomicUsize::new(0);
     let n_errors = AtomicUsize::new(0);
@@ -151,7 +174,6 @@ fn main() {
                 .expect("write failed");
             }
 
-            // Single frame: also print to stdout
             if batch_results.len() == 1 && batch_results[0].frame == 0 {
                 let r = &batch_results[0];
                 if let Some(ref err) = r.error {
@@ -184,4 +206,11 @@ fn main() {
         compute_time,
         output_path
     );
+}
+
+// ─── main ───────────────────────────────────────────────────────────────────
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    run_cli(&args[1..], &args[0]);
 }

@@ -44,13 +44,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Build release
-        run: cargo build --release --example identify_knot --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
       - name: Package binary (unix)
         if: matrix.os != 'windows-latest'
-        run: cp target/${{ matrix.target }}/release/examples/identify_knot ${{ matrix.artifact }}
+        run: cp target/${{ matrix.target }}/release/rust_knot ${{ matrix.artifact }}
       - name: Package binary (windows)
         if: matrix.os == 'windows-latest'
-        run: cp target/${{ matrix.target }}/release/examples/identify_knot.exe ${{ matrix.artifact }}
+        run: cp target/${{ matrix.target }}/release/rust_knot.exe ${{ matrix.artifact }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
