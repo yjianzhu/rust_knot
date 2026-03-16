@@ -2,30 +2,15 @@ use std::fs;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rust_knot::io::read_data_xyz_frames;
+use tempfile::tempdir;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
         .join(name)
-}
-
-fn unique_temp_path(prefix: &str, ext: &str) -> PathBuf {
-    let mut path = std::env::temp_dir();
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time before UNIX_EPOCH")
-        .as_nanos();
-    path.push(format!(
-        "rust_knot_{prefix}_{}_{}.{}",
-        std::process::id(),
-        now,
-        ext
-    ));
-    path
 }
 
 fn run_cli(args: &[&str]) -> std::process::Output {
@@ -70,6 +55,24 @@ fn threads_zero_is_rejected() {
 }
 
 #[test]
+fn unknown_flag_is_rejected() {
+    let input = fixture_path("L400_knot4_1_open.xyz");
+    let input_s = input.to_str().expect("non-UTF8 fixture path");
+
+    let output = run_cli(&[input_s, "--threds", "2"]);
+    assert!(
+        !output.status.success(),
+        "command should fail for unknown flag"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown flag '--threds'"),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
 fn multi_frame_cli_respects_batch_and_threads() {
     let frame_path = fixture_path("L400_knot4_1_open.xyz");
     let frame = fs::read_to_string(&frame_path).expect("failed to read fixture");
@@ -82,8 +85,9 @@ fn multi_frame_cli_respects_batch_and_threads() {
     };
     let expected_total_frames = expected_frames_per_copy * 2;
 
-    let multi_frame_path = unique_temp_path("multi_frame", "xyz");
-    let output_path = unique_temp_path("knot_index", "txt");
+    let temp = tempdir().expect("failed to create temp dir");
+    let multi_frame_path = temp.path().join("multi_frame.xyz");
+    let output_path = temp.path().join("knot_index.txt");
     fs::write(&multi_frame_path, format!("{frame}{frame}"))
         .expect("failed to write multi-frame xyz");
 
@@ -124,15 +128,13 @@ fn multi_frame_cli_respects_batch_and_threads() {
         lines[expected_total_frames].starts_with(&format!("{}\t4_1\t", expected_total_frames - 1)),
         "unexpected last frame line:\n{report}"
     );
-
-    let _ = fs::remove_file(multi_frame_path);
-    let _ = fs::remove_file(output_path);
 }
 
 #[test]
 fn unknown_knot_writes_polynomial_to_knot_index() {
     let input = fixture_path("knot_10_100.xyz");
-    let output_path = unique_temp_path("unknown_poly", "txt");
+    let temp = tempdir().expect("failed to create temp dir");
+    let output_path = temp.path().join("unknown_poly.txt");
     let input_s = input.to_str().expect("non-UTF8 fixture path");
     let output_s = output_path.to_str().expect("non-UTF8 output path");
 
@@ -162,6 +164,4 @@ fn unknown_knot_writes_polynomial_to_knot_index() {
         stderr.contains("knot polynomial not found in table"),
         "expected notfound warning in stderr:\n{stderr}"
     );
-
-    let _ = fs::remove_file(output_path);
 }
