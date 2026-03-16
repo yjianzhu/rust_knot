@@ -8,6 +8,7 @@ use numpy::{IntoPyArray, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3}
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
+use pyo3::Bound;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 
@@ -130,7 +131,6 @@ fn frames_from_path(path: &Path) -> PyResult<Vec<Vec<Point3>>> {
 fn parse_pdb_model_index(line: &str, fallback: usize) -> usize {
     line.get(5..)
         .unwrap_or("")
-        .trim()
         .split_whitespace()
         .next()
         .and_then(|s| s.parse::<usize>().ok())
@@ -237,7 +237,7 @@ fn frames_from_pdb_path(path: &Path, atom_filter: &str) -> PyResult<Vec<Vec<Poin
     Ok(frames)
 }
 
-fn frames_from_input(input_data: &PyAny) -> PyResult<Vec<Vec<Point3>>> {
+fn frames_from_input(input_data: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<Point3>>> {
     if let Ok(path) = input_data.extract::<String>() {
         return frames_from_path(Path::new(&path));
     }
@@ -252,7 +252,10 @@ fn frames_from_input(input_data: &PyAny) -> PyResult<Vec<Vec<Point3>>> {
     ))
 }
 
-fn frames_to_pyarray<'py>(py: Python<'py>, frames: &[Vec<Point3>]) -> PyResult<&'py PyArray3<f64>> {
+fn frames_to_pyarray<'py>(
+    py: Python<'py>,
+    frames: &[Vec<Point3>],
+) -> PyResult<Bound<'py, PyArray3<f64>>> {
     let n_frames = frames.len();
     let max_atoms = frames.iter().map(|f| f.len()).max().unwrap_or(0);
     // Ragged frames are padded to a dense (F, N, 3) tensor with NaN sentinels.
@@ -269,17 +272,20 @@ fn frames_to_pyarray<'py>(py: Python<'py>, frames: &[Vec<Point3>]) -> PyResult<&
 
     let array = Array3::from_shape_vec((n_frames, max_atoms, 3), data)
         .map_err(|e| to_py_runtime_error(e.to_string()))?;
-    Ok(array.into_pyarray(py))
+    Ok(array.into_pyarray_bound(py))
 }
 
-fn points_to_pyarray<'py>(py: Python<'py>, points: &[Point3]) -> PyResult<&'py PyArray2<f64>> {
+fn points_to_pyarray<'py>(
+    py: Python<'py>,
+    points: &[Point3],
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let mut data = Vec::with_capacity(points.len() * 3);
     for point in points {
         data.extend_from_slice(point);
     }
     let array = Array2::from_shape_vec((points.len(), 3), data)
         .map_err(|e| to_py_runtime_error(e.to_string()))?;
-    Ok(array.into_pyarray(py))
+    Ok(array.into_pyarray_bound(py))
 }
 
 fn classify_frame(
@@ -395,7 +401,7 @@ fn compute_knot_size(
 /// If frames have different atom counts, shorter frames are padded with `NaN`.
 fn read_xyz(py: Python<'_>, filename: &str) -> PyResult<Py<PyArray3<f64>>> {
     let frames = frames_from_path(Path::new(filename))?;
-    Ok(frames_to_pyarray(py, &frames)?.to_owned())
+    Ok(frames_to_pyarray(py, &frames)?.unbind())
 }
 
 #[pyfunction(signature = (filename, atom_filter = "all"))]
@@ -404,11 +410,11 @@ fn read_xyz(py: Python<'_>, filename: &str) -> PyResult<Py<PyArray3<f64>>> {
 /// If frames have different atom counts, shorter frames are padded with `NaN`.
 fn read_pdb(py: Python<'_>, filename: &str, atom_filter: &str) -> PyResult<Py<PyArray3<f64>>> {
     let frames = frames_from_pdb_path(Path::new(filename), atom_filter)?;
-    Ok(frames_to_pyarray(py, &frames)?.to_owned())
+    Ok(frames_to_pyarray(py, &frames)?.unbind())
 }
 
 #[pyfunction(signature = (filename, input_data, append = false))]
-fn write_xyz(filename: &str, input_data: &PyAny, append: bool) -> PyResult<()> {
+fn write_xyz(filename: &str, input_data: &Bound<'_, PyAny>, append: bool) -> PyResult<()> {
     let frames = frames_from_input(input_data)?;
     let mut options = OpenOptions::new();
     options.create(true).write(true);
@@ -432,7 +438,7 @@ fn write_xyz(filename: &str, input_data: &PyAny, append: bool) -> PyResult<()> {
 #[pyfunction(signature = (input_data, chain_type = "ring", threads = None))]
 fn knot_type(
     py: Python<'_>,
-    input_data: &PyAny,
+    input_data: &Bound<'_, PyAny>,
     chain_type: &str,
     threads: Option<usize>,
 ) -> PyResult<Vec<String>> {
@@ -449,7 +455,7 @@ fn knot_type(
 #[pyfunction(signature = (input_data, chain_type = "ring", threads = None))]
 fn knot_size(
     py: Python<'_>,
-    input_data: &PyAny,
+    input_data: &Bound<'_, PyAny>,
     chain_type: &str,
     threads: Option<usize>,
 ) -> PyResult<(Vec<String>, Vec<Vec<i32>>)> {
@@ -464,7 +470,11 @@ fn knot_size(
 }
 
 #[pyfunction(signature = (input_data, chain_type = "ring"))]
-fn kmt(py: Python<'_>, input_data: &PyAny, chain_type: &str) -> PyResult<Py<PyArray2<f64>>> {
+fn kmt(
+    py: Python<'_>,
+    input_data: &Bound<'_, PyAny>,
+    chain_type: &str,
+) -> PyResult<Py<PyArray2<f64>>> {
     let mut points = if let Ok(array2) = input_data.extract::<PyReadonlyArray2<f64>>() {
         points_from_array2(array2)?
     } else {
@@ -483,11 +493,11 @@ fn kmt(py: Python<'_>, input_data: &PyAny, chain_type: &str) -> PyResult<Py<PyAr
         }
     }
 
-    Ok(points_to_pyarray(py, &points)?.to_owned())
+    Ok(points_to_pyarray(py, &points)?.unbind())
 }
 
 #[pymodule]
-fn alexander_poly(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn alexander_poly(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_xyz, m)?)?;
     m.add_function(wrap_pyfunction!(read_pdb, m)?)?;
     m.add_function(wrap_pyfunction!(write_xyz, m)?)?;
@@ -503,6 +513,7 @@ mod tests {
     use std::sync::Once;
 
     use super::*;
+    use numpy::PyArrayMethods;
 
     fn init_python() {
         static INIT: Once = Once::new();
@@ -522,7 +533,7 @@ mod tests {
                 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, // frame 1
             ];
             let array = Array3::from_shape_vec((2, 2, 3), data).unwrap();
-            let py_array = array.into_pyarray(py);
+            let py_array = array.into_pyarray_bound(py);
             let frames = frames_from_array3(py_array.readonly()).unwrap();
             assert_eq!(frames.len(), 2);
             assert_eq!(frames[0], vec![[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]);
@@ -535,7 +546,7 @@ mod tests {
         init_python();
         Python::with_gil(|py| {
             let array = Array3::from_shape_vec((1, 2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
-            let py_array = array.into_pyarray(py);
+            let py_array = array.into_pyarray_bound(py);
             let err = frames_from_array3(py_array.readonly()).unwrap_err();
             assert!(err.to_string().contains("Expected array with shape"));
         });
