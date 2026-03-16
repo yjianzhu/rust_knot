@@ -10,6 +10,8 @@ pub mod knotsize;
 pub mod knottype;
 pub mod point;
 pub mod polynomial;
+#[cfg(feature = "python")]
+pub mod python_module;
 
 // Re-export primary public API
 pub use alexander_table::AlexanderTable;

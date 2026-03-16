@@ -4,10 +4,21 @@ version = "0.2.2"
 edition = "2021"
 description = "Knot identification and size calculation via Alexander polynomials"
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+python = ["dep:pyo3", "dep:numpy", "dep:ndarray", "dep:num_cpus"]
+
 [dependencies]
 chull = "0.2"
 thiserror = "2"
 rayon = "1.10"
+pyo3 = { version = "0.21", optional = true, features = ["extension-module"] }
+numpy = { version = "0.21", optional = true }
+ndarray = { version = "0.15", optional = true }
+num_cpus = { version = "1.16", optional = true }
 
 [dev-dependencies]
 approx = "0.5"
