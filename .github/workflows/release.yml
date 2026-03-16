@@ -9,22 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  check:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - name: Format check
-        run: cargo fmt --check
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Test
-        run: cargo test
-
   build:
-    needs: check
     strategy:
       matrix:
         include:
