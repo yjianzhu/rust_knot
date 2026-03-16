@@ -1,7 +1,6 @@
 use std::env;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use rayon::ThreadPoolBuilder;
@@ -82,9 +81,17 @@ fn run_cli(args: &[String], prog: &str) {
                 }));
             }
             s if !s.starts_with('-') => target_type = Some(s.to_string()),
-            other => eprintln!("warning: unknown flag '{other}'"),
+            other => {
+                eprintln!("error: unknown flag '{other}'");
+                std::process::exit(1);
+            }
         }
         i += 1;
+    }
+
+    if batch_size == Some(0) {
+        eprintln!("error: --batch must be at least 1");
+        std::process::exit(1);
     }
 
     if let Some(n) = num_threads {
@@ -99,11 +106,6 @@ fn run_cli(args: &[String], prog: &str) {
                 eprintln!("error: failed to configure rayon thread pool: {e}");
                 std::process::exit(1);
             });
-    }
-
-    if batch_size == Some(0) {
-        eprintln!("error: --batch must be at least 1");
-        std::process::exit(1);
     }
 
     let t0 = Instant::now();
@@ -144,8 +146,8 @@ fn run_cli(args: &[String], prog: &str) {
         .expect("write header failed");
 
     let t0 = Instant::now();
-    let n_knotted = AtomicUsize::new(0);
-    let n_errors = AtomicUsize::new(0);
+    let mut n_knotted = 0usize;
+    let mut n_errors = 0usize;
     let mut first_frame = None;
 
     let total_frames = process_frames_streaming(
@@ -158,9 +160,9 @@ fn run_cli(args: &[String], prog: &str) {
             for r in batch_results {
                 if let Some(ref err) = r.error {
                     eprintln!("frame {}: error: {err}", r.frame);
-                    n_errors.fetch_add(1, Ordering::Relaxed);
+                    n_errors += 1;
                 } else if r.knot_type != "1" {
-                    n_knotted.fetch_add(1, Ordering::Relaxed);
+                    n_knotted += 1;
                 }
 
                 for w in &r.warnings {
@@ -207,8 +209,8 @@ fn run_cli(args: &[String], prog: &str) {
     writer.flush().expect("flush failed");
     let compute_time = t0.elapsed();
 
-    let knotted = n_knotted.load(Ordering::Relaxed);
-    let errors = n_errors.load(Ordering::Relaxed);
+    let knotted = n_knotted;
+    let errors = n_errors;
     eprintln!(
         "Done: {} frames, {} knotted, {} unknot, {} errors — {:?}, written to {}",
         total_frames,

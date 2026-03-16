@@ -160,9 +160,14 @@ fn frames_from_pdb_path(path: &Path, atom_filter: &str) -> PyResult<Vec<Vec<Poin
         )));
     }
 
+    enum AtomFilter {
+        All,
+        Ca,
+    }
+
     let atom_filter = match atom_filter.to_ascii_lowercase().as_str() {
-        "all" => "all",
-        "ca" => "ca",
+        "all" => AtomFilter::All,
+        "ca" => AtomFilter::Ca,
         _ => {
             return Err(PyValueError::new_err(
                 "Invalid atom_filter. Expected 'all' or 'ca'.",
@@ -210,7 +215,7 @@ fn frames_from_pdb_path(path: &Path, atom_filter: &str) -> PyResult<Vec<Vec<Poin
             frames.resize_with(current_frame + 1, Vec::new);
         }
 
-        if atom_filter == "ca" {
+        if matches!(atom_filter, AtomFilter::Ca) {
             let atom_name = line.get(12..16).unwrap_or("").trim();
             if atom_name != "CA" {
                 continue;
@@ -250,6 +255,7 @@ fn frames_from_input(input_data: &PyAny) -> PyResult<Vec<Vec<Point3>>> {
 fn frames_to_pyarray<'py>(py: Python<'py>, frames: &[Vec<Point3>]) -> PyResult<&'py PyArray3<f64>> {
     let n_frames = frames.len();
     let max_atoms = frames.iter().map(|f| f.len()).max().unwrap_or(0);
+    // Ragged frames are padded to a dense (F, N, 3) tensor with NaN sentinels.
     let mut data = vec![f64::NAN; n_frames * max_atoms * 3];
 
     for (frame_idx, frame) in frames.iter().enumerate() {
@@ -310,7 +316,7 @@ fn classify_frames(
         })
     } else {
         frames
-            .iter()
+            .par_iter()
             .map(|points| classify_frame(points, table, config))
             .collect()
     };
@@ -331,7 +337,7 @@ fn compute_knot_size(
     config: &KnotConfig,
     num_threads: Option<usize>,
 ) -> Result<(Vec<String>, Vec<Vec<i32>>), String> {
-    let compute_one = |points: &Vec<Point3>| -> Result<(String, Vec<i32>), String> {
+    let compute_one = |points: &[Point3]| -> Result<(String, Vec<i32>), String> {
         let knot_type = classify_frame(points, table, config)?;
         let size = if knot_type == "1" || !knot_type.contains('_') {
             vec![-1, -1, 0]
@@ -355,9 +361,17 @@ fn compute_knot_size(
             .num_threads(threads)
             .build()
             .map_err(|e| e.to_string())?;
-        pool.install(|| frames.par_iter().map(compute_one).collect())
+        pool.install(|| {
+            frames
+                .par_iter()
+                .map(|points| compute_one(points))
+                .collect()
+        })
     } else {
-        frames.iter().map(compute_one).collect()
+        frames
+            .par_iter()
+            .map(|points| compute_one(points))
+            .collect()
     };
 
     let mut knot_types = Vec::with_capacity(results.len());
@@ -376,12 +390,18 @@ fn compute_knot_size(
 }
 
 #[pyfunction]
+/// Read XYZ file into a NumPy array with shape `(frames, atoms, 3)`.
+///
+/// If frames have different atom counts, shorter frames are padded with `NaN`.
 fn read_xyz(py: Python<'_>, filename: &str) -> PyResult<Py<PyArray3<f64>>> {
     let frames = frames_from_path(Path::new(filename))?;
     Ok(frames_to_pyarray(py, &frames)?.to_owned())
 }
 
 #[pyfunction(signature = (filename, atom_filter = "all"))]
+/// Read PDB file into a NumPy array with shape `(frames, atoms, 3)`.
+///
+/// If frames have different atom counts, shorter frames are padded with `NaN`.
 fn read_pdb(py: Python<'_>, filename: &str, atom_filter: &str) -> PyResult<Py<PyArray3<f64>>> {
     let frames = frames_from_pdb_path(Path::new(filename), atom_filter)?;
     Ok(frames_to_pyarray(py, &frames)?.to_owned())
@@ -467,14 +487,80 @@ fn kmt(py: Python<'_>, input_data: &PyAny, chain_type: &str) -> PyResult<Py<PyAr
 }
 
 #[pymodule]
-fn alexander_poly(py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn alexander_poly(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_xyz, m)?)?;
     m.add_function(wrap_pyfunction!(read_pdb, m)?)?;
     m.add_function(wrap_pyfunction!(write_xyz, m)?)?;
     m.add_function(wrap_pyfunction!(knot_type, m)?)?;
     m.add_function(wrap_pyfunction!(knot_size, m)?)?;
     m.add_function(wrap_pyfunction!(kmt, m)?)?;
-
-    let _ = py;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+    use std::sync::Once;
+
+    use super::*;
+
+    fn init_python() {
+        static INIT: Once = Once::new();
+        INIT.call_once(pyo3::prepare_freethreaded_python);
+    }
+
+    fn straight_line(n: usize) -> Vec<Point3> {
+        (0..n).map(|i| [i as f64, 0.0, 0.0]).collect()
+    }
+
+    #[test]
+    fn frames_from_array3_parses_expected_points() {
+        init_python();
+        Python::with_gil(|py| {
+            let data = vec![
+                0.0, 1.0, 2.0, 3.0, 4.0, 5.0, // frame 0
+                6.0, 7.0, 8.0, 9.0, 10.0, 11.0, // frame 1
+            ];
+            let array = Array3::from_shape_vec((2, 2, 3), data).unwrap();
+            let py_array = array.into_pyarray(py);
+            let frames = frames_from_array3(py_array.readonly()).unwrap();
+            assert_eq!(frames.len(), 2);
+            assert_eq!(frames[0], vec![[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]);
+            assert_eq!(frames[1], vec![[6.0, 7.0, 8.0], [9.0, 10.0, 11.0]]);
+        });
+    }
+
+    #[test]
+    fn frames_from_array3_rejects_invalid_shape() {
+        init_python();
+        Python::with_gil(|py| {
+            let array = Array3::from_shape_vec((1, 2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+            let py_array = array.into_pyarray(py);
+            let err = frames_from_array3(py_array.readonly()).unwrap_err();
+            assert!(err.to_string().contains("Expected array with shape"));
+        });
+    }
+
+    #[test]
+    fn classify_frames_defaults_to_parallel_when_threads_none() {
+        let table_data = "0_1\t1\n";
+        let table = AlexanderTable::from_reader(Cursor::new(table_data)).unwrap();
+        let config = KnotConfig::default();
+        let frames: Vec<Vec<Point3>> = (0..4).map(|_| straight_line(50)).collect();
+
+        let knot_types = classify_frames(&frames, &table, &config, None).unwrap();
+        assert_eq!(knot_types, vec!["1".to_string(); 4]);
+    }
+
+    #[test]
+    fn compute_knot_size_defaults_to_parallel_when_threads_none() {
+        let table_data = "0_1\t1\n";
+        let table = AlexanderTable::from_reader(Cursor::new(table_data)).unwrap();
+        let config = KnotConfig::default();
+        let frames: Vec<Vec<Point3>> = (0..3).map(|_| straight_line(50)).collect();
+
+        let (knot_types, sizes) = compute_knot_size(&frames, &table, &config, None).unwrap();
+        assert_eq!(knot_types, vec!["1".to_string(); 3]);
+        assert_eq!(sizes, vec![vec![-1, -1, 0]; 3]);
+    }
 }

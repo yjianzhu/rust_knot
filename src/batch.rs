@@ -57,6 +57,12 @@ pub fn process_frame(
     let search_target = if knot_type == "1" {
         None
     } else if unknown_poly {
+        if target_type.is_none() {
+            warnings.push(
+                "knot core search skipped: knot polynomial is unknown and no target_type was provided"
+                    .to_string(),
+            );
+        }
         target_type
     } else {
         Some(target_type.unwrap_or(&knot_type))
