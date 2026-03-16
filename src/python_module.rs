@@ -2,15 +2,12 @@ use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 
 use ndarray::{Array2, Array3};
 use numpy::{IntoPyArray, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
-use pyo3::exceptions::{
-    PyFileNotFoundError, PyNotImplementedError, PyRuntimeError, PyValueError,
-};
+use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict};
+use pyo3::types::PyAny;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 
@@ -23,28 +20,14 @@ use crate::knotsize::find_knot_core;
 use crate::knottype::get_knottype;
 use crate::point::Point3;
 
-const DEFAULT_TABLE_PATH: &str = "/home/yongjian/.local/share/rust_knot/table_knot_Alexander_polynomial.txt";
-
-static TABLE_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
-
-fn table_override_cell() -> &'static Mutex<Option<PathBuf>> {
-    TABLE_OVERRIDE.get_or_init(|| Mutex::new(None))
-}
+const DEFAULT_TABLE_PATH: &str =
+    "/home/yongjian/.local/share/rust_knot/table_knot_Alexander_polynomial.txt";
 
 fn to_py_runtime_error(message: impl Into<String>) -> PyErr {
     PyRuntimeError::new_err(message.into())
 }
 
-fn resolve_table_override() -> Option<PathBuf> {
-    let guard = table_override_cell().lock().ok()?;
-    guard.as_ref().cloned()
-}
-
 fn resolve_table_path() -> Option<PathBuf> {
-    if let Some(path) = resolve_table_override() {
-        return Some(path);
-    }
-
     if let Ok(path) = env::var("PYTHONKNOT_ALEXANDER_TABLE") {
         return Some(PathBuf::from(path));
     }
@@ -183,7 +166,11 @@ fn points_to_pyarray<'py>(py: Python<'py>, points: &[Point3]) -> PyResult<&'py P
     Ok(array.into_pyarray(py))
 }
 
-fn classify_frame(points: &[Point3], table: &AlexanderTable, config: &KnotConfig) -> Result<String, String> {
+fn classify_frame(
+    points: &[Point3],
+    table: &AlexanderTable,
+    config: &KnotConfig,
+) -> Result<String, String> {
     match get_knottype(points, table, config) {
         Ok(t) => Ok(t),
         Err(KnotError::NotFound(poly)) => Ok(poly),
@@ -241,8 +228,8 @@ fn compute_knot_size(
         let size = if knot_type == "1" || !knot_type.contains('_') {
             vec![-1, -1, 0]
         } else {
-            let core =
-                find_knot_core(points, &knot_type, table, config).map_err(|e| to_py_runtime_error(e.to_string()))?;
+            let core = find_knot_core(points, &knot_type, table, config)
+                .map_err(|e| to_py_runtime_error(e.to_string()))?;
             if core.matched {
                 vec![core.left, core.right, core.size]
             } else {
@@ -279,75 +266,34 @@ fn write_xyz(filename: &str, input_data: &PyAny) -> PyResult<()> {
     Ok(())
 }
 
-#[pyfunction]
-fn get_alexander_map(filename: &str) -> PyResult<()> {
-    let path = PathBuf::from(filename);
-    if !path.exists() {
-        return Err(PyFileNotFoundError::new_err(format!(
-            "Alexander table file not found: {}",
-            path.display()
-        )));
-    }
-    let mut guard = table_override_cell()
-        .lock()
-        .map_err(|_| to_py_runtime_error("Failed to acquire table override lock"))?;
-    *guard = Some(path);
-    Ok(())
-}
-
-#[pyfunction]
-fn print_alexander_map() -> PyResult<()> {
-    if let Some(path) = resolve_table_path() {
-        println!("Using Alexander table: {}", path.display());
-    } else {
-        println!("Using built-in rust_knot table (<= 9 crossings).");
-    }
-    Ok(())
+#[pyfunction(signature = (input_data, chain_type = "ring", num_threads = None))]
+fn knot_type(
+    input_data: &PyAny,
+    chain_type: &str,
+    num_threads: Option<usize>,
+) -> PyResult<Vec<String>> {
+    let frames = frames_from_input(input_data)?;
+    let table = load_table()?;
+    let config = config_from_chain_type(chain_type)?;
+    classify_frames(&frames, &table, &config, num_threads)
 }
 
 #[pyfunction(signature = (input_data, chain_type = "ring"))]
-fn calculate_knot_type(input_data: &PyAny, chain_type: &str) -> PyResult<Vec<String>> {
-    let frames = frames_from_input(input_data)?;
-    let table = load_table()?;
-    let config = config_from_chain_type(chain_type)?;
-    classify_frames(&frames, &table, &config, None)
-}
-
-#[pyfunction(signature = (input_data, chain_type = "ring", num_threads = 2))]
-fn calculate_knot_type_parallel(
-    input_data: &PyAny,
-    chain_type: &str,
-    num_threads: usize,
-) -> PyResult<Vec<String>> {
-    let frames = frames_from_input(input_data)?;
-    let table = load_table()?;
-    let config = config_from_chain_type(chain_type)?;
-    classify_frames(&frames, &table, &config, Some(num_threads))
-}
-
-#[pyfunction(signature = (input_data, chain_type = "ring", num_threads = 2))]
-fn calculate_knot_type_simd(
-    input_data: &PyAny,
-    chain_type: &str,
-    num_threads: usize,
-) -> PyResult<Vec<String>> {
-    calculate_knot_type_parallel(input_data, chain_type, num_threads)
-}
-
-#[pyfunction]
-fn calculate_knot_size(input_data: &PyAny, chain_type: &str) -> PyResult<(Vec<String>, Vec<Vec<i32>>)> {
+fn knot_size(input_data: &PyAny, chain_type: &str) -> PyResult<(Vec<String>, Vec<Vec<i32>>)> {
     let frames = frames_from_input(input_data)?;
     let table = load_table()?;
     let config = config_from_chain_type(chain_type)?;
     compute_knot_size(&frames, &table, &config)
 }
 
-#[pyfunction(name = "KMT_chain")]
-fn kmt_chain(py: Python<'_>, input_data: &PyAny, chain_type: &str) -> PyResult<Py<PyArray2<f64>>> {
+#[pyfunction(signature = (input_data, chain_type = "ring"))]
+fn kmt(py: Python<'_>, input_data: &PyAny, chain_type: &str) -> PyResult<Py<PyArray2<f64>>> {
     let mut points = if let Ok(array2) = input_data.extract::<PyReadonlyArray2<f64>>() {
         points_from_array2(array2)?
     } else {
-        return Err(PyRuntimeError::new_err("KMT_chain expects a NumPy array with shape (N, 3)."));
+        return Err(PyRuntimeError::new_err(
+            "kmt expects a NumPy array with shape (N, 3).",
+        ));
     };
 
     match chain_type {
@@ -363,43 +309,13 @@ fn kmt_chain(py: Python<'_>, input_data: &PyAny, chain_type: &str) -> PyResult<P
     Ok(points_to_pyarray(py, &points)?.to_owned())
 }
 
-#[pyfunction]
-fn gauss_notation(_input_data: &PyAny) -> PyResult<()> {
-    Err(PyNotImplementedError::new_err(
-        "gauss_notation is not implemented in rust_knot yet.",
-    ))
-}
-
-#[pyfunction]
-fn clear_caches() -> String {
-    "Caches cleared".to_string()
-}
-
-#[pyfunction]
-fn get_optimization_info(py: Python<'_>) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new(py);
-    dict.set_item("backend", "rust_pyo3")?;
-    dict.set_item("thread_count", num_cpus::get())?;
-    dict.set_item("cache_enabled", false)?;
-    dict.set_item("simd_avx", py.None())?;
-    dict.set_item("simd_sse2", py.None())?;
-    Ok(dict.into())
-}
-
 #[pymodule]
 fn alexander_poly(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_xyz, m)?)?;
     m.add_function(wrap_pyfunction!(write_xyz, m)?)?;
-    m.add_function(wrap_pyfunction!(get_alexander_map, m)?)?;
-    m.add_function(wrap_pyfunction!(print_alexander_map, m)?)?;
-    m.add_function(wrap_pyfunction!(calculate_knot_type, m)?)?;
-    m.add_function(wrap_pyfunction!(calculate_knot_type_parallel, m)?)?;
-    m.add_function(wrap_pyfunction!(calculate_knot_type_simd, m)?)?;
-    m.add_function(wrap_pyfunction!(calculate_knot_size, m)?)?;
-    m.add_function(wrap_pyfunction!(kmt_chain, m)?)?;
-    m.add_function(wrap_pyfunction!(gauss_notation, m)?)?;
-    m.add_function(wrap_pyfunction!(clear_caches, m)?)?;
-    m.add_function(wrap_pyfunction!(get_optimization_info, m)?)?;
+    m.add_function(wrap_pyfunction!(knot_type, m)?)?;
+    m.add_function(wrap_pyfunction!(knot_size, m)?)?;
+    m.add_function(wrap_pyfunction!(kmt, m)?)?;
 
     let _ = py;
     Ok(())
