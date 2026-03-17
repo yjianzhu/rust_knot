@@ -5,7 +5,7 @@ edition = "2021"
 description = "Knot identification and size calculation via Alexander polynomials"
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["rlib", "cdylib"]
 
 [features]
 default = []
