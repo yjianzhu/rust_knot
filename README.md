@@ -257,6 +257,69 @@ git push origin v0.2.0
 # CI 自动编译 + 发布到 GitHub Releases
 ```
 
+## Agent Skills
+
+仓库内置两个可直接给 Codex / Claude Code 使用的 skills：
+
+| Skill | 用途 |
+|-------|------|
+| `rust-knot-cli` | 调用全局 `rust_knot` CLI 分析 XYZ 轨迹、构造参数、排查输出 |
+| `export-knot-xyz` | 从本地 SQLite 数据库导出指定 knot type 和链长的 XYZ 初始构型 |
+
+### 安装 skills
+
+```bash
+git clone https://github.com/yjianzhu/rust_knot.git
+cd rust_knot
+
+# Codex
+mkdir -p ~/.codex/skills
+ln -sfn "$PWD/skills/rust-knot-cli" ~/.codex/skills/rust-knot-cli
+ln -sfn "$PWD/skills/export-knot-xyz" ~/.codex/skills/export-knot-xyz
+
+# Claude Code
+mkdir -p ~/.claude/skills
+ln -sfn "$PWD/skills/rust-knot-cli" ~/.claude/skills/rust-knot-cli
+ln -sfn "$PWD/skills/export-knot-xyz" ~/.claude/skills/export-knot-xyz
+```
+
+### 安装命令行依赖
+
+`rust-knot-cli` 默认使用：
+
+```text
+~/.local/bin/rust_knot
+~/.local/share/rust_knot/table_knot_Alexander_polynomial.txt
+```
+
+`export-knot-xyz` 默认使用：
+
+```text
+~/.local/bin/export_xyz
+~/.local/share/rust_knot/knots_data.db
+```
+
+`rust_knot` 主程序从 GitHub Releases 下载对应平台二进制后放入 `~/.local/bin/`。Linux 下示例：
+
+```bash
+mkdir -p ~/.local/bin ~/.local/share/rust_knot
+curl -L -o ~/.local/bin/rust_knot \
+  https://github.com/yjianzhu/rust_knot/releases/latest/download/rust_knot-linux-x86_64
+chmod +x ~/.local/bin/rust_knot
+```
+
+`export_xyz` 和 `knots_data.db` 打包在 release asset `export-knot-xyz-linux-x86_64.tar.gz` 中：
+
+```bash
+curl -L -o /tmp/export-knot-xyz-linux-x86_64.tar.gz \
+  https://github.com/yjianzhu/rust_knot/releases/latest/download/export-knot-xyz-linux-x86_64.tar.gz
+tar -xzf /tmp/export-knot-xyz-linux-x86_64.tar.gz -C /tmp
+
+cp /tmp/export-knot-xyz/bin/export_xyz ~/.local/bin/
+cp /tmp/export-knot-xyz/share/rust_knot/knots_data.db ~/.local/share/rust_knot/
+chmod +x ~/.local/bin/export_xyz
+```
+
 ## 相对 C++ 版本的改进
 
 ### Bug 修复
