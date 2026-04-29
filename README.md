@@ -140,7 +140,36 @@ cargo run -- input.xyz
 ...
 ```
 
-### 作为库
+### 作为库依赖
+
+在你的项目 `Cargo.toml` 中添加依赖:
+
+```toml
+[dependencies]
+# 方式一: 本地路径 (适合同机开发)
+rust_knot = { path = "../rust_knot" }
+
+# 方式二: Git 仓库
+rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git" }
+
+# 方式三: 指定版本/分支
+rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git", tag = "v0.2.2" }
+```
+
+#### 公开 API 一览
+
+| 类型/函数 | 说明 |
+|-----------|------|
+| `Point3` | 点类型别名 `[f64; 3]` |
+| `AlexanderTable` | Alexander 多项式查找表 |
+| `KnotConfig` | 统一配置结构体 |
+| `get_knottype(&[Point3], &AlexanderTable, &KnotConfig) -> Result<String>` | 识别纽结类型 |
+| `find_knot_core(&[Point3], &str, &AlexanderTable, &KnotConfig) -> Result<KnotCoreResult>` | 定位最小纽结核心 |
+| `KnotCoreResult` | 核心结果: `left`, `right`, `size`, `matched`, `found_type` |
+| `process_frame` / `process_frames_parallel` / `process_frames_streaming` | 批处理接口 |
+| `FrameResult` | 批处理单帧结果 |
+
+#### 基本用法
 
 ```rust
 use rust_knot::{AlexanderTable, KnotConfig, get_knottype, find_knot_core};
