@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "rust_knot"
+abstract: >-
+  A pure-Rust library and command-line tool for identifying knot topology
+  with Alexander polynomials and locating the smallest knotted core.
+authors:
+  - family-names: "Zhu"
+    given-names: "Yongjian"
+    alias: "yjianzhu"
+    orcid: "https://orcid.org/0000-0002-8861-7990"
+version: "0.2.3"
+date-released: 2026-03-17
+repository-code: "https://github.com/yjianzhu/rust_knot"
+url: "https://github.com/yjianzhu/rust_knot"
+keywords:
+  - "knot theory"
+  - "Alexander polynomial"
+  - "topology"
+  - "Rust"
