@@ -155,7 +155,7 @@ rust_knot = { path = "../rust_knot" }
 rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git" }
 
 # 方式三: 指定版本/分支
-rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git", tag = "v0.2.2" }
+rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git", tag = "v0.2.4" }
 ```
 
 #### 公开 API 一览
@@ -254,8 +254,8 @@ GitHub Actions 自动构建三平台 release：
 
 发布新版本:
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.4
+git push origin v0.2.4
 # CI 自动编译 + 发布到 GitHub Releases
 ```
 

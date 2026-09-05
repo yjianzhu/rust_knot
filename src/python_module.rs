@@ -327,14 +327,7 @@ fn classify_frames(
             .collect()
     };
 
-    let mut out = Vec::with_capacity(results.len());
-    for result in results {
-        match result {
-            Ok(value) => out.push(value),
-            Err(message) => return Err(message),
-        }
-    }
-    Ok(out)
+    results.into_iter().collect()
 }
 
 fn compute_knot_size(

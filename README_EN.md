@@ -156,7 +156,7 @@ rust_knot = { path = "../rust_knot" }
 rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git" }
 
 # Option 3: specific version or branch
-rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git", tag = "v0.2.2" }
+rust_knot = { git = "https://github.com/yjianzhu/rust_knot.git", tag = "v0.2.4" }
 ```
 
 #### Public API
@@ -256,8 +256,8 @@ GitHub Actions automatically builds releases for three platforms:
 Publish a new version:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.4
+git push origin v0.2.4
 # CI builds the binaries and publishes the GitHub release automatically
 ```
 
