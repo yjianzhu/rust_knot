@@ -2,6 +2,8 @@
 
 [中文](README.md) | [English](README_EN.md)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22316028.svg)](https://doi.org/10.5281/zenodo.22316028)
+
 Rust 实现的纽结拓扑分析库 — 通过 Alexander 多项式识别纽结类型并定位最小纽结核心。
 
 本项目是对 C++ 版本（`knottype.cpp`, `knotsize.cpp`, `hull.cpp`, `my_function.cpp`）的完整重写，消除了 GiNaC 符号数学依赖，修复了已知 bug，并提供线程安全的纯函数式设计。

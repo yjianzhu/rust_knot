@@ -2,6 +2,8 @@
 
 [中文](README.md) | [English](README_EN.md)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22316028.svg)](https://doi.org/10.5281/zenodo.22316028)
+
 A knot topology analysis library written in Rust. It identifies knot types using Alexander polynomials and locates the smallest knotted core.
 
 This project is a complete rewrite of the C++ implementation (`knottype.cpp`, `knotsize.cpp`, `hull.cpp`, and `my_function.cpp`). It removes the GiNaC symbolic mathematics dependency, fixes known bugs, and provides a thread-safe, purely functional design.
